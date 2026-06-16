@@ -23,7 +23,7 @@ for all_resources as _, resource {
   if strings.has_prefix(resource.type, "aws_") {
     tags = resource.change.after.tags else {}
     for required_tags as tag {
-      if not tags contains tag or tags[tag] is "" {
+      if (not (tags contains tag)) or (tags[tag] is "") {
         append(violations, sprintf("Resource '%s' is missing required tag '%s'", resource.address, tag))
       }
     }
