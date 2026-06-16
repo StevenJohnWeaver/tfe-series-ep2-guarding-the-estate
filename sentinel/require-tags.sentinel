@@ -7,6 +7,7 @@
 # This policy enforces taggability at plan time — before resources are created.
 
 import "tfplan/v2" as tfplan
+import "strings"
 
 required_tags = ["environment", "owner"]
 

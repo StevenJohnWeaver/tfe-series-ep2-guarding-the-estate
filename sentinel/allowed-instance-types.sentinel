@@ -7,6 +7,7 @@
 # architectural standards across every deployment — dev, staging, and prod.
 
 import "tfplan/v2" as tfplan
+import "strings"
 
 # Allowlist of approved instance type prefixes
 allowed_prefixes = ["t3.", "t3a.", "m5.", "m5a.", "m6i."]
