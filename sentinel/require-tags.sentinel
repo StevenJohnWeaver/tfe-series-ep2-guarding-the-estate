@@ -19,12 +19,16 @@ all_resources = filter tfplan.resource_changes as _, rc {
 violations = []
 
 for all_resources as _, resource {
-  # Only check AWS resources (skip data sources, provider meta-resources)
+  # Only check taggable AWS resources — many aws_* resources (e.g.
+  # aws_route_table_association) have no tags_all attribute at all.
   if strings.has_prefix(resource.type, "aws_") {
-    tags = resource.change.after.tags else {}
-    for required_tags as tag {
-      if (not (tags contains tag)) or (tags[tag] is "") {
-        append(violations, "Resource '" + resource.address + "' is missing required tag '" + tag + "'")
+    after = resource.change.after else {}
+    if after contains "tags_all" {
+      tags = after.tags_all else {}
+      for required_tags as tag {
+        if (not (tags contains tag)) or (tags[tag] is "") {
+          append(violations, "Resource '" + resource.address + "' is missing required tag '" + tag + "'")
+        }
       }
     }
   }
