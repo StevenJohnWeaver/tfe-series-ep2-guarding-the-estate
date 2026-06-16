@@ -28,7 +28,7 @@ for node_groups as _, ng {
       strings.has_prefix(itype, prefix)
     }
     if not approved {
-      append(violations, sprintf("Node group '%s' uses instance type '%s' which is not on the approved list: %v", ng.address, itype, allowed_prefixes))
+      append(violations, "Node group '" + ng.address + "' uses instance type '" + itype + "' which is not on the approved list")
     }
   }
 }
