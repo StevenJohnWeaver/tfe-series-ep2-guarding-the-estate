@@ -23,10 +23,7 @@ for all_resources as _, resource {
     tags = resource.change.after.tags else {}
     for required_tags as tag {
       if not tags contains tag or tags[tag] is "" {
-        append(violations, sprintf(
-          "Resource '%s' is missing required tag '%s'",
-          resource.address, tag
-        ))
+        append(violations, sprintf("Resource '%s' is missing required tag '%s'", resource.address, tag))
       }
     }
   }
