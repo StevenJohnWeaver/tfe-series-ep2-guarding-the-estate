@@ -1,0 +1,40 @@
+# allowed-instance-types.sentinel
+# Ep2: Architecture Invariants — enforce approved instance families only.
+# Hard-mandatory: applies in all workspaces, cannot be overridden.
+#
+# This policy prevents over-provisioned or unapproved instance types from
+# being used in EKS node groups. It demonstrates how Sentinel enforces
+# architectural standards across every deployment — dev, staging, and prod.
+
+import "tfplan/v2" as tfplan
+
+# Allowlist of approved instance type prefixes
+allowed_prefixes = ["t3.", "t3a.", "m5.", "m5a.", "m6i."]
+
+# Collect all aws_eks_node_group resources from the plan
+node_groups = filter tfplan.resource_changes as _, rc {
+  rc.type is "aws_eks_node_group" and
+  rc.change.actions contains "create" or rc.change.actions contains "update"
+}
+
+# For each node group, check that ALL instance types are on the allowlist
+violations = []
+
+for node_groups as _, ng {
+  instance_types = ng.change.after.instance_types else []
+  for instance_types as _, itype {
+    approved = any allowed_prefixes as prefix {
+      strings.has_prefix(itype, prefix)
+    }
+    if not approved {
+      append(violations, sprintf(
+        "Node group '%s' uses instance type '%s' which is not on the approved list: %v",
+        ng.address, itype, allowed_prefixes
+      ))
+    }
+  }
+}
+
+main = rule {
+  length(violations) is 0
+}

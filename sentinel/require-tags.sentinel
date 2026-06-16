@@ -1,0 +1,37 @@
+# require-tags.sentinel
+# Ep2: Governance-as-Code — every resource must carry environment and owner tags.
+# Soft-mandatory: can be overridden by a workspace admin with justification.
+#
+# Tags are the foundation of cost attribution and audit. Without them,
+# neither Cloudability nor your security team can answer "who owns this?"
+# This policy enforces taggability at plan time — before resources are created.
+
+import "tfplan/v2" as tfplan
+
+required_tags = ["environment", "owner"]
+
+# Find all resource changes that produce new or updated resources
+all_resources = filter tfplan.resource_changes as _, rc {
+  rc.change.actions contains "create" or rc.change.actions contains "update"
+}
+
+violations = []
+
+for all_resources as _, resource {
+  # Only check AWS resources (skip data sources, provider meta-resources)
+  if strings.has_prefix(resource.type, "aws_") {
+    tags = resource.change.after.tags else {}
+    for required_tags as tag {
+      if not tags contains tag or tags[tag] is "" {
+        append(violations, sprintf(
+          "Resource '%s' is missing required tag '%s'",
+          resource.address, tag
+        ))
+      }
+    }
+  }
+}
+
+main = rule {
+  length(violations) is 0
+}
