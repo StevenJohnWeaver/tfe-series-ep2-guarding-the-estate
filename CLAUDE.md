@@ -54,6 +54,23 @@ Not yet recorded. Demo flow below.
 - `.terraform.lock.hcl` generated on macOS lacks `linux_amd64` hashes HCP Terraform needs —
   regenerate with `terraform providers lock -platform=linux_amd64` from a plain
   `providers.tf` if this ever needs rebuilding
+- **Org-level static AWS credential variable sets break dynamic credentials.** An org
+  variable set named "AWS Credentials" (`AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY` for
+  `steveweaver-demo-user`) scoped to all workspaces conflicts with the dynamic provider
+  credential set. The AWS *provider* uses dynamic creds correctly via
+  `TFC_AWS_PROVIDER_AUTH`, but `data.aws_eks_cluster_auth` calls the SDK directly and picks
+  up the static env vars instead — producing Kubernetes RBAC `forbidden` errors for
+  `steveweaver-demo-user` instead of the dynamic role. Fix: remove the static variable set
+  from any workspace using dynamic credentials, or scope it away from those workspaces.
+- **EKS access entry propagation race on destroy/recreate.** When the cluster is
+  destroyed and recreated, `aws_eks_access_entry.this["cluster_creator"]` (granted via
+  `enable_cluster_creator_admin_permissions = true`) gets replaced for whichever principal
+  ran `CreateCluster` this time. `module.auth`'s `data.aws_eks_cluster_auth` only depends on
+  `module.cluster.cluster_name`, not on the access entry — a sibling resource — so it can
+  generate a token before the new entry has propagated through the EKS control plane,
+  causing `module.app` to fail with `Unauthorized`. Fixed with a `time_sleep` (30s) gating
+  `module.auth` on all of `module.cluster` completing — see `main.tf`. If it still races,
+  bump the sleep duration or just re-run apply (the entry will already exist on retry).
 
 ## Demo flow (recording guide)
 1. **Sentinel pass** — both policies green on a normal plan
