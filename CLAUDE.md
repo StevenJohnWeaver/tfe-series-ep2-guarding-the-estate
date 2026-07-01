@@ -63,14 +63,13 @@ Not yet recorded. Demo flow below.
   `steveweaver-demo-user` instead of the dynamic role. Fix: remove the static variable set
   from any workspace using dynamic credentials, or scope it away from those workspaces.
 - **EKS access entry propagation race on destroy/recreate.** When the cluster is
-  destroyed and recreated, `aws_eks_access_entry.this["cluster_creator"]` (granted via
-  `enable_cluster_creator_admin_permissions = true`) gets replaced for whichever principal
-  ran `CreateCluster` this time. `module.auth`'s `data.aws_eks_cluster_auth` only depends on
-  `module.cluster.cluster_name`, not on the access entry — a sibling resource — so it can
-  generate a token before the new entry has propagated through the EKS control plane,
-  causing `module.app` to fail with `Unauthorized`. Fixed with a `time_sleep` (30s) gating
-  `module.auth` on all of `module.cluster` completing — see `main.tf`. If it still races,
-  bump the sleep duration or just re-run apply (the entry will already exist on retry).
+  destroyed and recreated, `aws_eks_access_entry.this["cluster_creator"]` gets replaced.
+  `data.aws_eks_cluster_auth` can generate a token before the new entry has propagated,
+  causing `module.app` to fail with `Unauthorized`. Fixed with a `time_sleep` (30s) — but
+  the sleep gates `module.app`, NOT `module.auth`. Gating `module.auth` defers the data
+  source to apply time whenever `module.cluster` changes, producing `system:anonymous`
+  plan-phase failures (token is null at plan time). The token can always be generated freely;
+  it's the Kubernetes resource *creation* that must wait for propagation. See `main.tf`.
 
 ## Destroy sequence (ep2-dev cost-saving teardown)
 
