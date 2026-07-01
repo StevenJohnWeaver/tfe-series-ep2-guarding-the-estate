@@ -72,6 +72,64 @@ Not yet recorded. Demo flow below.
   `module.auth` on all of `module.cluster` completing — see `main.tf`. If it still races,
   bump the sleep duration or just re-run apply (the entry will already exist on retry).
 
+## Destroy sequence (ep2-dev cost-saving teardown)
+
+This environment is periodically destroyed to save AWS costs and reapplied before recording.
+The destroy has several non-obvious failure modes — follow this sequence to avoid them.
+
+### Pre-destroy order
+Downstream workspaces that live inside ep2's VPC must be destroyed first:
+1. `ep4-ops-vm` — no AWS resources, destroy from HCP Terraform UI
+2. `ep4-vm-prod` — EC2 instance/SG in ep2's VPC; destroy from HCP Terraform UI
+3. `ep2-dev` — VPC and everything under it; steps below
+
+### Removing Kubernetes resources from state before destroying
+The Kubernetes provider authenticates via `module.auth.token` (a short-lived EKS token).
+During a destroy run the token may resolve to empty (`system:anonymous` forbidden errors)
+because the data source refresh fails or the token has expired. Rather than fighting this,
+remove all Kubernetes-managed resources from state before queuing the destroy — the EKS
+cluster deletion cleans up the underlying pods/namespaces anyway:
+
+```bash
+# Set up local CLI access to HCP Terraform (VCS-connected workspace blocks CLI-triggered runs
+# in Remote mode — switch ep2-dev to Local execution mode first in HCP Terraform UI:
+# Settings → General → Execution Mode → Local → Save)
+export TF_WORKSPACE=ep2-dev
+export TF_TOKEN_app_terraform_io=<your-hcp-terraform-token>
+terraform init
+terraform state rm module.app   # removes namespace, deployment, service from state
+```
+
+### Destroy the LoadBalancer Service's orphaned AWS resources manually
+`module.app` includes a `kubernetes_service_v1` of type LoadBalancer, which creates an AWS
+ELB and its own security group. Removing `module.app` from state does NOT delete these AWS
+resources — they become orphaned and block VPC/IGW/subnet deletion:
+
+1. **Delete the ELB** — AWS Console → EC2 → Load Balancers, or:
+   ```bash
+   aws elb describe-load-balancers --region us-east-1 \
+     --query "LoadBalancerDescriptions[?VPCId=='<vpc-id>'].LoadBalancerName" \
+     --output text
+   aws elb delete-load-balancer --load-balancer-name <name> --region us-east-1
+   ```
+2. **Delete the ELB's security group** — after the ELB is gone its SG (`k8s-elb-*`) lingers:
+   ```bash
+   aws ec2 describe-security-groups \
+     --filters "Name=vpc-id,Values=<vpc-id>" \
+     --query "SecurityGroups[?GroupName!='default'].{ID:GroupId,Name:GroupName}" \
+     --region us-east-1 --output table
+   aws ec2 delete-security-group --group-id <sg-id> --region us-east-1
+   ```
+
+### Queue the destroy from HCP Terraform UI
+Switch ep2-dev back to Remote execution mode (Settings → General → Execution Mode →
+Remote → Save), then queue a destroy plan: Settings → Destruction and Deletion →
+Queue destroy plan. The VPC, subnets, and IGW will now delete cleanly.
+
+If the VPC delete still fails with `DependencyViolation`, wait 2–3 minutes for EKS control
+plane ENIs to finish detaching, then re-run the destroy. Re-running is always safe — Terraform
+skips already-deleted resources.
+
 ## Demo flow (recording guide)
 1. **Sentinel pass** — both policies green on a normal plan
 2. **Hard block** — edit `modules/cluster/main.tf:52`, change `instance_types` from
