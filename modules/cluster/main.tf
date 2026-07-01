@@ -49,7 +49,7 @@ module "eks" {
       desired_size   = 1
       max_size       = 1
       min_size       = 1
-      instance_types = ["p3.2xlarge"]
+      instance_types = ["t3.small"]
 
       # Give the nodegroup more time to become healthy while the separate 'auth' component
       # writes aws-auth (if that's not immediate).
